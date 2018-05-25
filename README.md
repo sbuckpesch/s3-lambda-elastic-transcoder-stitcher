@@ -1,13 +1,11 @@
 # S3 video stitcher
 
-Do you think generating and hosting webfonts is too complicated? Just
-make it easy for everyone. This **AWS Lambda function** will:
+1. Create a folder
+2. Upload intro.mp4 and outro.mp4 into that folder
+3. Drop a new video in mp4 format to that folder
+4. Grab a cup of coffee
+5. Refresh the folder and find your stitched output file
 
-- Watch a specified S3 bucket for new SVG files
-- Regenerate a new webfont on each SVG upload (ttf, woff, eot, html, css, json)
-- Recongizes the folder structure of the S3 bucket to manage multiple webfonts
-
-![Automatical Webfont generation on AWS S3](intro.gif "Automatical Webfont generation on AWS S3")
 
 ## Requirements
 

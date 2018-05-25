@@ -38,12 +38,14 @@ provider:
         - "s3:ListBucket"
         - "s3:Put*"
         - "s3:GetObject"
+        - "elastictranscoder:CreateJob"
       Resource:
         - "arn:aws:s3:::${self:custom.bucket_name}"
         - "arn:aws:s3:::${self:custom.bucket_name}/*"
+        - "arn:aws:elastictranscoder:*:*:*"
 
 functions:
-  generateWebfont:
+  stitchVideos:
     handler: handler.stitchVideos
     events:
       - s3:
@@ -51,5 +53,5 @@ functions:
           events:
             - s3:ObjectCreated:*
           rules:
-            - suffix: .svg
+            - suffix: .mp4
 

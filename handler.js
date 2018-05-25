@@ -3,100 +3,150 @@ const AWS = require('aws-sdk');
 const util = require('util');
 const path = require('path');
 
-var pipelineId = '1527276506567-bso5vf';
-
-// AWS elastic transcoder presets
-var video_360 = '1455030365353-80u4mw'; //default HLS 360p
-var video_480 = '1455033923052-lfe4h2'; // HLS 480p
-//var video_480p_mp4 = 'custom transcoder preset';
-
-// change these to match your S3 setup
-// note: transcoder is picky about characters in the metadata
-var region = 'eu-west-1';
-var copyright = 'acme.com 2016';
-
 // BEGIN Lambda code
-console.log('Loading function');
+console.log('Start stitchVideo function');
 
-const eltr = new aws.ElasticTranscoder({
-    region: region
+const transcoder = new AWS.ElasticTranscoder({
+    region: 'eu-west-1'
 });
 const s3 = new AWS.S3();
 
-exports.stitchVideos = (event, context) => {
+module.exports.stitchVideos = (event, context, callback) => {
 
     // Read options from the event.
     console.log("Reading options from event:\n", util.inspect(event, {depth: 5}));
-    // Object key may have spaces or unicode non-ASCII characters.
-    let srcKey = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, " "));
 
-    // Infer the image type.
-    let typeMatch = srcKey.match(/\.([^.]*)$/);
+    // Prepare settings
+    const filePath = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, " "));
+    const fileName = path.basename(filePath);
+    const dir = path.dirname(filePath);
+    const name = dir.split(path.sep).slice(-1).pop();
+    const bucket = event.Records[0].s3.bucket.name;
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, " "));
+    const elasticTranscodeOptions = {
+        filePath,
+        fileName,
+        dir,
+        bucket,
+        name,
+        objectKey: key,
+        pipelineId: '1527276506567-bso5vf',
+    };
+    console.log("Elastic transcoder options:\n", util.inspect(elasticTranscodeOptions, {depth: 5}));
+
+    // Validate input
+    const typeMatch = filePath.match(/\.([^.]*)$/);
     if (!typeMatch) {
-        console.error('unable to infer image type for key ' + srcKey);
+        console.error('unable to infer video type for key ' + filePath);
         return;
     }
     let videoType = typeMatch[1];
     if (videoType !== "mp4") {
-        console.log('skipping non-mp4 ' + srcKey);
+        console.log('skipping non-mp4 ' + filePath);
+        return;
+    }
+    if (!elasticTranscodeOptions.dir) {
+        console.log('No folder name specified ' + dir);
+        return;
+    }
+    if (elasticTranscodeOptions.fileName.includes('output') ) {
+        console.log('The file is already processed. Skip it ' + elasticTranscodeOptions.filePath);
+        return;
+    }
+    if (name === 'intro.mp4' || name === 'outro.mp4') {
+        console.log('Intro or outro uploaded. Skip processing: ' + filePath);
+        return;
+    }
+    if (name === 'intro.mp4' || name === 'outro.mp4') {
+        console.log('Intro or outro uploaded. Skip processing: ' + filePath);
         return;
     }
 
-    // Prepare settings
-    let dir = path.dirname(srcKey);
-    let name = dir.split(path.sep).slice(-1).pop();
-    let bucket = event.Records[0].s3.bucket.name;
-    let key = event.Records[0].s3.object.key;
-    let request = s3.getObject({Bucket: bucket, Key: key});
-
-    const elasticTranscodeOptions = {
-        filename: srcKey,
-        bucket: event.Records[0].s3.bucket.name,
-        output: '/tmp/',
-        source: '/tmp/',
-        name: name,
-        path: name
-    };
-    console.log("Generating webfont:\n", util.inspect(elasticTranscodeOptions, {depth: 5}));
-
-    // Validate webfont options
-    if (!elasticTranscodeOptions.name) {
-        console.log('No folder name specified ' + srcKey);
-        return;
+    const videoFormats = {
+        mp4720p: '1351620000001-000010',
+        webm720p: '1351620000001-100240',
     }
 
+    // Video file input
+    let videoInput = [{
+        Key: elasticTranscodeOptions.filePath,
+        FrameRate: 'auto',
+        Resolution: 'auto',
+        AspectRatio: 'auto',
+        Interlaced: 'auto',
+        Container: 'auto'
+    }];
 
-    request.on('error', function (error, response) {
-        console.log("Error getting object " + key + " from bucket " + bucket +
-            ". Make sure they exist and your bucket is in the same region as this function.");
-        console.log(error);
-        console.log(error.stack);
-        context.fail('Error', "Error getting file: " + error);
+    // Video outputs
+    const videoOutput = [{
+        Key: elasticTranscodeOptions.filePath + '.output.720p.mp4',
+        //ThumbnailPattern: elasticTranscodeOptions.filePath + '-{count}',
+        PresetId: videoFormats.mp4720p, //Generic 720p
+        Watermarks: [{
+            InputKey: 'watermarks/logo.png',
+            PresetWatermarkId: 'BottomRight'
+        }],
+    }, {
+        Key: elasticTranscodeOptions.filePath + '.output.720p.webm',
+        ThumbnailPattern: '',
+        PresetId:  videoFormats.webm720p, //Webm 720p
+        Watermarks: [{
+            InputKey: 'watermarks/logo.png',
+            PresetWatermarkId: 'BottomRight'
+        }],
+    }];
+
+    // Check if intro.mp4 file is available in the folder
+    console.log(`Check if  ${dir}/intro.mp4 is available in bucket ${elasticTranscodeOptions.bucket}`);
+    s3.getObject({
+        Bucket: elasticTranscodeOptions.bucket,
+        Key: `${dir}/intro.mp4`
+    }, function (err, data) {
+        if (!err) {
+            console.log(`${dir}/intro.mp4 added as intro`);
+            // Add intro to the beginning of the video
+            videoInput.unshift({
+                Key: `${dir}/intro.mp4`,
+                FrameRate: 'auto',
+                Resolution: 'auto',
+                AspectRatio: 'auto',
+                Interlaced: 'auto',
+                Container: 'auto'
+            });
+        }
     });
 
-    request.on('success', function(response) {
-        let data = response.data;
-        let manifest = data.Body.toString();
+    // Check if outro.mp4 is available in the folder
+    console.log("Video input:\n", util.inspect(videoInput, {depth: 5}));
+    console.log("Video out:\n", util.inspect(videoOutput, {depth: 5}));
 
-        console.log('Received data:', manifest);
-        console.log('Received data:', data.ContentLength);
-
-        manifest = JSON.parse(manifest);
-        sendVideoToET(manifest, context);
+    transcoder.createJob({
+        PipelineId: elasticTranscodeOptions.pipelineId,
+        Inputs: videoInput,
+        Outputs: videoOutput,
+        UserMetadata: {
+            date: new Date().toISOString(),
+            copyright: 'App-Arena.com'
+        }
+    }, function (err, data) {
+        if (err) {
+            console.log('Something went wrong:', err)
+        } else {
+            console.log('Converting is done');
+        }
+        callback(err, data);
     });
 
-    request.send();
+    /*
+        const response = {
+            statusCode: 200,
+            body: JSON.stringify({
+                message: 'Go Serverless v1.0! Your function executed successfully!',
+                input: event,
+            }),
+        };
 
-/*
-    const response = {
-        statusCode: 200,
-        body: JSON.stringify({
-            message: 'Go Serverless v1.0! Your function executed successfully!',
-            input: event,
-        }),
-    };
-
-    callback(null, response);*/
+        callback(null, response);*/
 };
 
 /**
@@ -105,13 +155,13 @@ exports.stitchVideos = (event, context) => {
  * encode with a proper format the video uploaded
  */
 function sendVideoToET(manifest, context) {
-    let key =  manifest.media;
+    let key = manifest.media;
     let user = '';
     if ((manifest.user).length !== 0) {
         user = manifest.user + '/';
     }
 
-    let generate_outputs = function(config) {
+    let generate_outputs = function (config) {
         let out = [];
         for (let key in config) {
             let in_ = config[key];
@@ -178,10 +228,9 @@ function sendVideoToET(manifest, context) {
     };
 
 
-
     let job = eltr.createJob(params);
 
-    job.on('error', function(error, response) {
+    job.on('error', function (error, response) {
         console.log('Failed to send new video ' + key + ' to ET');
         console.log(error);
         console.log(error.stack);
@@ -189,7 +238,7 @@ function sendVideoToET(manifest, context) {
         context.fail(error);
     });
 
-    job.on('success', function(response) {
+    job.on('success', function (response) {
         context.succeed('Completed, job to ET sent succesfully!');
     });
     job.send();
