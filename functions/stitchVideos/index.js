@@ -58,14 +58,11 @@ module.exports.handler = async (event, context, callback) => {
 		console.log('The file is already processed. Skip it ' + elasticTranscodeOptions.filePath);
 		return;
 	}
-	if (name === 'intro.mp4' || name === 'outro.mp4') {
+	if (name.toLowerCase() === 'intro.mp4' || name.toLowerCase() === 'outro.mp4') {
 		console.log('Intro or outro uploaded. Skip processing: ' + filePath);
 		return;
 	}
-	if (name === 'intro.mp4' || name === 'outro.mp4') {
-		console.log('Intro or outro uploaded. Skip processing: ' + filePath);
-		return;
-	}
+
 
 	const videoFormats = {
 		mp4720p: '1351620000001-000010'
@@ -95,20 +92,33 @@ module.exports.handler = async (event, context, callback) => {
 
 	// Check if intro.mp4 file is available in the folder
 	let introAvailable = true;
+	let introFilename = 'intro.mp4';
 	try {
 		await s3.getObject({
 			Bucket: elasticTranscodeOptions.bucket,
-			Key: `${dir}/intro.mp4`
+			Key: `${dir}/${introFilename}`
 		}).promise();
 	} catch(err) {
 		introAvailable = false;
 		console.log(`${dir}/intro.mp4 not available`);
 	}
+	if (!introAvailable) {
+		try {
+			introFilename = 'intro.MP4';
+			await s3.getObject({
+				Bucket: elasticTranscodeOptions.bucket,
+				Key: `${dir}/${introFilename}`
+			}).promise();
+			introAvailable = true;
+		} catch(err) {
+			console.log(`${dir}/intro.MP4 not available`);
+		}
+	}
 	if (introAvailable) {
 		// Add intro to the beginning of the video
-		console.log(`${dir}/intro.mp4 added to the beginning`);
+		console.log(`${dir}/${introFilename} added to the beginning`);
 		params.Inputs.unshift({
-			Key: `${dir}/intro.mp4`,
+			Key: `${dir}/${introFilename}`,
 			FrameRate: 'auto',
 			Resolution: 'auto',
 			AspectRatio: 'auto',
@@ -119,20 +129,33 @@ module.exports.handler = async (event, context, callback) => {
 
 	// Check if outro.mp4 file is available in the folder
 	let outroAvailable = true;
+	let outroFilename = 'outro.mp4';
 	try {
 		await s3.getObject({
 			Bucket: elasticTranscodeOptions.bucket,
-			Key: `${dir}/outro.mp4`
+			Key: `${dir}/${outroFilename}`
 		}).promise();
 	} catch(err) {
 		outroAvailable = false;
 		console.log(`${dir}/outro.mp4 not available`);
 	}
+	if (!outroAvailable) {
+		try {
+			outroFilename = 'outro.MP4';
+			await s3.getObject({
+				Bucket: elasticTranscodeOptions.bucket,
+				Key: `${dir}/${outroFilename}`
+			}).promise();
+			outroAvailable = true;
+		} catch(err) {
+			console.log(`${dir}/outro.MP4 not available`);
+		}
+	}
 	if (outroAvailable) {
-		console.log(`${dir}/outro.mp4 added as outro`);
+		console.log(`${dir}/${outroFilename} added as outro`);
 		// Add outro to the beginning of the video
 		params.Inputs.push({
-			Key: `${dir}/outro.mp4`,
+			Key: `${dir}/${outroFilename}`,
 			FrameRate: 'auto',
 			Resolution: 'auto',
 			AspectRatio: 'auto',
@@ -143,23 +166,36 @@ module.exports.handler = async (event, context, callback) => {
 
 	// Check if watermark.mp4 file is available in the folder
 	let watermarkAvailable = true;
+	let watermarkFilename = 'watermark.png';
 	try {
 		await s3.getObject({
 			Bucket: elasticTranscodeOptions.bucket,
-			Key: `${dir}/watermark.png`
+			Key: `${dir}/${watermarkFilename}`
 		}).promise();
 	} catch(err) {
 		watermarkAvailable = false;
 		console.log(`${dir}/watermark.png not available`);
 	}
+	if (!watermarkAvailable) {
+		try {
+			watermarkFilename = 'watermark.PNG';
+			await s3.getObject({
+				Bucket: elasticTranscodeOptions.bucket,
+				Key: `${dir}/${watermarkFilename}`
+			}).promise();
+			watermarkAvailable = true;
+		} catch(err) {
+			console.log(`${dir}/watermark.PNG not available`);
+		}
+	}
 	if (watermarkAvailable) {
-		console.log(`${dir}/watermark.png added as watermark on the bottom right`);
+		console.log(`${dir}/${watermarkFilename} added as watermark on the bottom right`);
 		// Add watermark to all output
 		let i;
 		for (i = 0; i < params.Outputs.length; i++) {
 			let output = params.Outputs[i];
 			output.Watermarks = [{
-				InputKey: `${dir}/watermark.png`,
+				InputKey: `${dir}/${watermarkFilename}`,
 				PresetWatermarkId: 'BottomRight'
 			}];
 			params.Outputs[i] = output;

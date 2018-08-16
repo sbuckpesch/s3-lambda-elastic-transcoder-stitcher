@@ -40,8 +40,8 @@ functions:
           bucket: videostitcher
           events:
             - s3:ObjectCreated:*
-          rules:
-            - suffix: .mp4
+          #rules:
+          #  - suffix: .mp4
 
 plugins:
   - serverless-mocha-plugin
