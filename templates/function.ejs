@@ -1,0 +1,29 @@
+const AWS = require('aws-sdk');
+const util = require('util');
+
+/**
+*
+* @param event
+* @return {Promise<*>}
+*/
+module.exports.<%= handlerFunction %> = async (event) => {
+  // Log function input
+  const log = require('console-log-level')({
+    level : process.env.LOG_LEVEL,
+  });
+  log.trace('Start service: \n',  util.inspect(event));
+
+  try {
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: 'Go Serverless v1.0! Your function executed successfully!',
+        input: event,
+      }),
+    };
+  } catch (err) {
+    // Global error handling
+    console.error(`Error processing aggregation: ${err}`);
+    throw new Error(err);
+  }
+};
